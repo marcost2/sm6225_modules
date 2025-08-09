@@ -9,8 +9,18 @@ endif
 ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
-	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-5.4
-	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	ifeq ($(TARGET_SUPPORT), sa525m)
+		AUDIO_ROOT := $(shell pwd)/../../../../vendor/qcom/opensource/audio-kernel
+	else
+		AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-5.4
+		AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	endif
+endif
+
+ifeq ($(TARGET_SUPPORT), sa525m)
+	include $(AUDIO_ROOT)/config/sa525mauto.conf
+	export
+	INCS    +=  -include $(AUDIO_ROOT)/config/sa525mautoconf.h
 endif
 
 ifeq ($(CONFIG_SND_SOC_AUTO), y)
@@ -23,6 +33,16 @@ ifeq ($(CONFIG_SND_SOC_AUTO), y)
 		include $(AUDIO_ROOT)/config/sa6155auto.conf
 		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sa6155autoconf.h
+	endif
+	ifdef CONFIG_SND_SOC_GVM
+		include $(AUDIO_ROOT)/config/gvmauto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+	endif
+	ifdef CONFIG_SND_SOC_SA8255
+		include $(AUDIO_ROOT)/config/sa8255auto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/config/sa8255autoconf.h
 	endif
 else
 ifeq ($(CONFIG_SND_SOC_KALAMA_LE), y)
@@ -82,6 +102,10 @@ ifeq ($(KERNEL_BUILD), 0)
 		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/bengalautoconf.h
 	endif
+	ifeq ($(CONFIG_ARCH_MONACO), y)
+		include $(AUDIO_ROOT)/config/monacoauto.conf
+		INCS    +=  -include $(AUDIO_ROOT)/config/monacoautoconf.h
+	endif
 	ifeq ($(CONFIG_ARCH_SDMSHRIKE), y)
 		ifdef CONFIG_SND_SOC_SA8155
 			include $(AUDIO_ROOT)/config/sa8155auto.conf
@@ -112,6 +136,11 @@ ifeq ($(KERNEL_BUILD), 0)
 		include $(AUDIO_ROOT)/config/sdxpinnauto.conf
 		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sdxpinnautoconf.h
+	endif
+	ifeq ($(CONFIG_ARCH_SDXBAAGHA), y)
+		include $(AUDIO_ROOT)/config/sdxbaaghaauto.conf
+		export
+		INCS    +=  -include $(AUDIO_ROOT)/config/sdxbaaghaautoconf.h
 	endif
 endif
 endif
@@ -186,6 +215,10 @@ ifdef CONFIG_SND_SOC_KALAMA
 	MACHINE_OBJS += kalama.o
 endif
 
+ifdef CONFIG_SND_SOC_PCIE
+	PCIE_OBJS += msm-pcm-pcie.o
+endif
+
 # for HOLI sound card driver
 ifdef CONFIG_SND_SOC_HOLI
 	MACHINE_OBJS += holi.o
@@ -200,9 +233,25 @@ ifdef CONFIG_SND_SOC_BENGAL
 	MACHINE_OBJS += bengal.o
 endif
 
+# for MONACO sound card driver
+ifdef CONFIG_SND_SOC_MONACO
+	MACHINE_OBJS += monaco.o
+endif
+
 # for sa8155 sound card driver
 ifdef CONFIG_SND_SOC_SA8155
-	MACHINE_OBJS += sa8155.o
+	MACHINE_OBJS += auto_spf_dummy.o
+endif
+
+# for sa8255 sound card driver
+ifdef CONFIG_SND_SOC_SA8255_AUTO_SPF
+	SPF_MACHINE_OBJS += msm_common.o
+	SPF_MACHINE_OBJS += auto_spf_dummy.o
+endif
+
+# for gvm sound card driver
+ifdef CONFIG_SND_SOC_GVM_AUTO_SPF
+	SPF_MACHINE_OBJS += gvm_auto_spf_dummy.o
 endif
 
 ifdef CONFIG_SND_SOC_QDSP6V2
@@ -213,10 +262,14 @@ ifdef CONFIG_SND_SOC_SDX
 	MACHINE_OBJS += sdx-target.o
 endif
 
+ifdef CONFIG_SND_SOC_SA525M
+	MACHINE_OBJS += sdx-auto-target.o
+endif
+
 LINUX_INC +=	-Iinclude/linux
 
 INCS +=		$(COMMON_INC) \
-		$(UAPI_INC)
+			$(UAPI_INC)
 
 EXTRA_CFLAGS += $(INCS)
 
@@ -285,11 +338,26 @@ machine_dlkm-y := $(MACHINE_OBJS)
 obj-$(CONFIG_SND_SOC_BENGAL) += machine_dlkm.o
 machine_dlkm-y := $(MACHINE_OBJS)
 
+obj-$(CONFIG_SND_SOC_MONACO) += machine_dlkm.o
+machine_dlkm-y := $(MACHINE_OBJS)
+
 obj-$(CONFIG_SND_SOC_SA8155) += machine_dlkm.o
 machine_dlkm-y := $(MACHINE_OBJS)
 
 obj-$(CONFIG_SND_SOC_SDX) += machine_dlkm.o
 machine_dlkm-y := $(MACHINE_OBJS)
+
+obj-$(CONFIG_SND_SOC_SA525M) += machine_dlkm.o
+machine_dlkm-y := $(MACHINE_OBJS)
+
+obj-$(CONFIG_SND_SOC_SA8255_AUTO_SPF) += spf_machine_dlkm.o
+spf_machine_dlkm-y := $(SPF_MACHINE_OBJS)
+
+obj-$(CONFIG_SND_SOC_GVM_AUTO_SPF) += spf_machine_dlkm.o
+spf_machine_dlkm-y := $(SPF_MACHINE_OBJS)
+
+obj-$(CONFIG_SND_SOC_PCIE) += msm_pcm_pcie_dlkm.o
+msm_pcm_pcie_dlkm-y := $(PCIE_OBJS)
 
 # inject some build related information
 DEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"

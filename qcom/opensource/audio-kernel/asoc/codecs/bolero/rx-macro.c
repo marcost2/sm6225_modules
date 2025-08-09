@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -462,6 +463,7 @@ struct rx_macro_priv {
 	u16 default_clk_id;
 	int8_t rx0_gain_val;
 	int8_t rx1_gain_val;
+	u32 rx_macro_wsa_slv;
 };
 
 static struct snd_soc_dai_driver rx_macro_dai[];
@@ -1090,6 +1092,7 @@ static int rx_macro_hw_params(struct snd_pcm_substream *substream,
 	int ret = 0;
 	struct device *rx_dev = NULL;
 	struct rx_macro_priv *rx_priv = NULL;
+	int mclk_freq = MCLK_FREQ;
 
 	if (!rx_macro_get_data(component, &rx_dev, &rx_priv, __func__))
 		return -EINVAL;
@@ -1106,6 +1109,14 @@ static int rx_macro_hw_params(struct snd_pcm_substream *substream,
 			pr_err("%s: cannot set sample rate: %u\n",
 				__func__, params_rate(params));
 			return ret;
+		}
+		if(rx_priv->is_native_on == true) {
+			mclk_freq = MCLK_FREQ_NATIVE;
+		}
+		if (rx_priv->swr_ctrl_data) {
+			swrm_wcd_notify(
+				rx_priv->swr_ctrl_data[0].rx_swr_pdev,
+				SWR_CLK_FREQ, &mclk_freq);
 		}
 		rx_priv->bit_width[dai->id] = params_width(params);
 		break;
@@ -1249,7 +1260,11 @@ static int rx_macro_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
 			}
 		}
 	}
-		break;
+
+	if (rx_priv->rx_macro_wsa_slv)
+		bolero_rx_pa_on(rx_dev);
+	break;
+
 	default:
 		break;
 	}
@@ -4112,7 +4127,7 @@ static int rx_macro_probe(struct platform_device *pdev)
 	struct rx_macro_priv *rx_priv = NULL;
 	u32 rx_base_addr = 0, muxsel = 0;
 	char __iomem *rx_io_base = NULL, *muxsel_io = NULL;
-	int ret = 0;
+	int ret = 0, val = 0;
 	u8 bcl_pmic_params[3];
 	u32 default_clk_id = 0;
 	u32 is_used_rx_swr_gpio = 1;
@@ -4144,6 +4159,14 @@ static int rx_macro_probe(struct platform_device *pdev)
 			__func__, "reg");
 		return ret;
 	}
+
+	ret = of_property_read_u32(pdev->dev.of_node, "qcom,rx-wsa-enable", &val);
+	if (ret == 0) {
+		rx_priv->rx_macro_wsa_slv = (val == 1) ? 1 : 0;
+		dev_info(&pdev->dev, "RX macro wsa slave is %s\n",
+			(val == 1) ? "connected" : "not connected");
+	}
+
 	ret = of_property_read_u32(pdev->dev.of_node, "qcom,default-clk-id",
 				   &default_clk_id);
 	if (ret) {

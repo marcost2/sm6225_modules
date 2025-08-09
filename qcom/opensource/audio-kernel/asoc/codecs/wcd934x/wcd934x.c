@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/module.h>
 #include <linux/init.h>
@@ -45,6 +45,7 @@
 #include <asoc/wcd9xxx-resmgr-v2.h>
 #include <asoc/wcdcal-hwdep.h>
 #include <asoc/wcd9xxx_registers.h>
+#include <linux/qti-regmap-debugfs.h>
 #include <ipc/gpr-lite.h>
 #include "wcd934x-dsd.h"
 
@@ -188,6 +189,7 @@ enum {
 	ANC_MIC_AMIC4,
 	CLK_INTERNAL,
 	CLK_MODE,
+	WCD_SUPPLIES_LPM_MODE,
 };
 
 enum {
@@ -10196,6 +10198,7 @@ done:
 	return rc;
 }
 
+#ifndef CONFIG_WCD934X_I2S
 static void tavil_cdc_vote_svs(struct snd_soc_component *component, bool vote)
 {
 	struct tavil_priv *tavil = snd_soc_component_get_drvdata(component);
@@ -10234,6 +10237,7 @@ static int tavil_wdsp_initialize(struct snd_soc_component *component)
 
 	return ret;
 }
+#endif
 
 /*
  * tavil_soc_get_mbhc: get wcd934x_mbhc handle of corresponding codec
@@ -10342,7 +10346,9 @@ static int tavil_device_down(struct wcd9xxx *wcd9xxx)
 		snd_soc_card_change_online_state(component->card, 0);
 #endif /* CONFIG_AUDIO_QGKI */
 
+#ifndef CONFIG_WCD934X_I2S
 	wcd_dsp_ssr_event(priv->wdsp_cntl, WCD_CDC_DOWN_EVENT);
+#endif
 	wcd_resmgr_set_sido_input_src_locked(priv->resmgr,
 					     SIDO_SOURCE_INTERNAL);
 
@@ -10451,7 +10457,9 @@ static int tavil_post_reset_cb(struct wcd9xxx *wcd9xxx)
 	 */
 	tavil_vote_svs(tavil, false);
 
+#ifndef CONFIG_WCD934X_I2S
 	wcd_dsp_ssr_event(tavil->wdsp_cntl, WCD_CDC_UP_EVENT);
+#endif
 	snd_event_notify(tavil->dev->parent, SND_EVENT_UP);
 
 done:
@@ -10472,6 +10480,8 @@ static int tavil_soc_codec_probe(struct snd_soc_component *component)
 	control = dev_get_drvdata(component->dev->parent);
 
 	snd_soc_component_init_regmap(component, control->regmap);
+
+	devm_regmap_qti_debugfs_register(control->dev->parent, control->regmap);
 
 	dev_info(component->dev, "%s()\n", __func__);
 	tavil = snd_soc_component_get_drvdata(component);
@@ -10624,7 +10634,9 @@ static int tavil_soc_codec_probe(struct snd_soc_component *component)
 
 	snd_soc_dapm_sync(dapm);
 
+#ifndef CONFIG_WCD934X_I2S
 	tavil_wdsp_initialize(component);
+#endif
 	/*
 	 * Once the codec initialization is completed, the svs vote
 	 * can be released allowing the codec to go to SVS2.
@@ -10657,8 +10669,10 @@ static void tavil_soc_codec_remove(struct snd_soc_component *component)
 	control->rx_chs = NULL;
 	control->tx_chs = NULL;
 	tavil_cleanup_irqs(tavil);
+#ifndef CONFIG_WCD934X_I2S
 	if (tavil->wdsp_cntl)
 		wcd_dsp_cntl_deinit(&tavil->wdsp_cntl);
+#endif
 	/* Deinitialize MBHC module */
 	tavil_mbhc_deinit(component);
 	tavil->mbhc = NULL;
@@ -10682,29 +10696,92 @@ static const struct snd_soc_component_driver soc_codec_dev_tavil = {
 static int tavil_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct tavil_priv *tavil = platform_get_drvdata(pdev);
+	struct tavil_priv *tavil = NULL;
+	struct wcd9xxx *wcd9xxx = NULL;
+	struct wcd9xxx_pdata *pdata = NULL;
+	struct snd_soc_component *component = NULL;
 
+	if (!pdev) {
+		dev_err(dev, "%s: Platform device null\n", __func__);
+		return -EINVAL;
+	}
+
+	tavil = platform_get_drvdata(pdev);
 	if (!tavil) {
 		dev_err(dev, "%s: tavil private data is NULL\n", __func__);
 		return -EINVAL;
 	}
+
+	wcd9xxx   = tavil->wcd9xxx;
+	component = tavil->component;
+	if (!wcd9xxx || !component || !component->dev || !component->dev->parent) {
+		dev_err(dev, "%s: wcd9xxx or component, dev or parent is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	pdata     = dev_get_platdata(component->dev->parent);
+	if (!pdata) {
+		dev_err(dev, "%s: pdata is NULL\n", __func__);
+		return -EINVAL;
+	}
+
 	dev_dbg(dev, "%s: system suspend\n", __func__);
 	if (delayed_work_pending(&tavil->power_gate_work) &&
 	    cancel_delayed_work_sync(&tavil->power_gate_work))
 		tavil_codec_power_gate_digital_core(tavil);
+
+	msm_cdc_set_supplies_lpm_mode(wcd9xxx->dev,
+			wcd9xxx->supplies,
+			pdata->regulator,
+			pdata->num_supplies,
+			true);
+	set_bit(WCD_SUPPLIES_LPM_MODE, &tavil->status_mask);
+
 	return 0;
 }
 
 static int tavil_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct tavil_priv *tavil = platform_get_drvdata(pdev);
+	struct tavil_priv *tavil = NULL;
+	struct wcd9xxx *wcd9xxx = NULL;
+	struct wcd9xxx_pdata *pdata = NULL;
+	struct snd_soc_component *component = NULL;
 
+	if (!pdev) {
+		dev_err(dev, "%s: Platform device null\n", __func__);
+		return -EINVAL;
+	}
+
+	tavil = platform_get_drvdata(pdev);
 	if (!tavil) {
 		dev_err(dev, "%s: tavil private data is NULL\n", __func__);
 		return -EINVAL;
 	}
 	dev_dbg(dev, "%s: system resume\n", __func__);
+
+	wcd9xxx   = tavil->wcd9xxx;
+	component = tavil->component;
+	if (!wcd9xxx || !component || !component->dev || !component->dev->parent) {
+		dev_err(dev, "%s: wcd9xxx or component, dev or parent could be NULL\n", __func__);
+		return -EINVAL;
+        }
+
+	pdata     = dev_get_platdata(component->dev->parent);
+	if (!pdata) {
+		dev_err(dev, "%s: pdata is NULL\n", __func__);
+		return -EINVAL;
+	}
+
+	if (test_bit(WCD_SUPPLIES_LPM_MODE, &tavil->status_mask)) {
+		msm_cdc_set_supplies_lpm_mode(wcd9xxx->dev,
+				wcd9xxx->supplies,
+				pdata->regulator,
+				pdata->num_supplies,
+				false);
+		clear_bit(WCD_SUPPLIES_LPM_MODE, &tavil->status_mask);
+	}
+
 	return 0;
 }
 
@@ -11099,7 +11176,7 @@ static void tavil_add_child_devices(struct work_struct *work)
 		pdev->dev.parent = tavil->dev;
 		pdev->dev.of_node = node;
 
-		if (strcmp(node->name, "swr_master") == 0) {
+		if (strnstr(node->name, "swr_master", strlen("swr_master")) != NULL) {
 			ret = platform_device_add_data(pdev, platdata,
 						       sizeof(*platdata));
 			if (ret) {
@@ -11118,7 +11195,7 @@ static void tavil_add_child_devices(struct work_struct *work)
 			goto err_pdev_add;
 		}
 
-		if (strcmp(node->name, "swr_master") == 0) {
+		if (strnstr(node->name, "swr_master", strlen("swr_master")) != NULL) {
 			temp = krealloc(swr_ctrl_data,
 					(ctrl_num + 1) * sizeof(
 					struct tavil_swr_ctrl_data),
@@ -11227,6 +11304,12 @@ static void ___tavil_get_codec_fine_version(struct tavil_priv *tavil)
  *
  * This API gets the reference to codec's struct wcd_dsp_cntl
  */
+#ifdef CONFIG_WCD934X_I2S
+struct wcd_dsp_cntl *tavil_get_wcd_dsp_cntl(struct device *dev)
+{
+	return NULL;
+}
+#else
 struct wcd_dsp_cntl *tavil_get_wcd_dsp_cntl(struct device *dev)
 {
 	struct platform_device *pdev;
@@ -11238,10 +11321,19 @@ struct wcd_dsp_cntl *tavil_get_wcd_dsp_cntl(struct device *dev)
 	}
 
 	pdev = to_platform_device(dev);
-	tavil = platform_get_drvdata(pdev);
+	if (!pdev) {
+		pr_err("%s: Invalid pdev\n", __func__);
+		return NULL;
+	}
 
+	tavil = platform_get_drvdata(pdev);
+	if (!tavil) {
+		pr_err("%s: Invalid tavil\n", __func__);
+		return NULL;
+	}
 	return tavil->wdsp_cntl;
 }
+#endif
 EXPORT_SYMBOL(tavil_get_wcd_dsp_cntl);
 
 static void wcd934x_ssr_disable(struct device *dev, void *data)
@@ -11437,6 +11529,7 @@ err_resmgr:
 	mutex_destroy(&tavil->swr.write_mutex);
 	mutex_destroy(&tavil->swr.clk_mutex);
 	devm_kfree(&pdev->dev, tavil);
+	platform_set_drvdata(pdev, NULL);
 
 	return ret;
 }

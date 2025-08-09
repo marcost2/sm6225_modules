@@ -311,7 +311,7 @@ static void *def_wcd_mbhc_cal(void)
 		(sizeof(btn_cfg->_v_btn_low[0]) * btn_cfg->num_btn);
 
 	btn_high[0] = 75;
-	btn_high[1] = 150;
+	btn_high[1] = 137;
 	btn_high[2] = 237;
 	btn_high[3] = 500;
 	btn_high[4] = 500;
@@ -433,6 +433,16 @@ static struct snd_soc_dai_link msm_common_be_dai_links[] = {
 		.ignore_suspend = 1,
 		.ops = &msm_common_be_ops,
 		SND_SOC_DAILINK_REG(usb_audio_tx),
+	},
+	{
+		.name = LPASS_BE_PCM_DUMMY_TX_0,
+		.stream_name = LPASS_BE_PCM_DUMMY_TX_0,
+		.capture_only = 1,
+		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
+			SND_SOC_DPCM_TRIGGER_POST},
+		.ignore_suspend = 1,
+		.ops = &msm_common_be_ops,
+		SND_SOC_DAILINK_REG(pcm_dummy_tx0),
 	},
 };
 
@@ -569,7 +579,7 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {
 		.ops = &msm_common_be_ops,
 		.ignore_suspend = 1,
 		.ignore_pmdown_time = 1,
-		SND_SOC_DAILINK_REG(pri_mi2s_rx),
+		SND_SOC_DAILINK_REG(pri_mi2s_rx_aw882xx),
 	},
 	{
 		.name = LPASS_BE_PRI_MI2S_TX,
@@ -579,7 +589,7 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {
 			SND_SOC_DPCM_TRIGGER_POST},
 		.ops = &msm_common_be_ops,
 		.ignore_suspend = 1,
-		SND_SOC_DAILINK_REG(pri_mi2s_tx),
+		SND_SOC_DAILINK_REG(pri_mi2s_tx_aw882xx),
 	},
 	{
 		.name = LPASS_BE_SEC_MI2S_RX,

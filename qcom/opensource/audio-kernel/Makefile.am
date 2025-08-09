@@ -24,10 +24,9 @@ endif
 ifeq ($(TARGET_SUPPORT), sdxpinn))
 KBUILD_OPTIONS += CONFIG_ARCH_SDXPINN=y
 endif
-
-subdir-ccflags-y += -I$(AUDIO_ROOT)/include/uapi/
-
-subdir-ccflags-y += -I$(AUDIO_ROOT)/include/uapi/
+ifeq ($(TARGET_SUPPORT), sa525m))
+KBUILD_OPTIONS += CONFIG_ARCH_SA525M=y
+endif
 
 obj-m := ipc/
 obj-m += dsp/
@@ -72,11 +71,22 @@ obj-m += asoc/codecs/
 obj-m += soc/
 endif
 
+ifeq ($(AUTO_GVM), yes)
+KBUILD_OPTIONS += CONFIG_SND_SOC_AUTO=y
+KBUILD_OPTIONS += CONFIG_SND_SOC_GVM=y
+endif
+
+ifeq ($(TARGET_SUPPORT), $(filter $(TARGET_SUPPORT), lemans))
+KBUILD_OPTIONS += CONFIG_SND_SOC_AUTO=y
+KBUILD_OPTIONS += CONFIG_SND_SOC_SA8255=m
+endif
+
 define PROCESS_HEADERS
 	$(foreach name,$(1),$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(2)$(name) $(3)$(name)))
 endef
 
 all:
+ifneq ($(QTI_TECHPACK), true)
 	$(shell rm -fr $(shell pwd)/soc/core.h)
 	$(shell ln -s $(KERNEL_SRC)/drivers/pinctrl/core.h $(shell pwd)/soc/core.h)
 	$(shell rm -fr $(shell pwd)/include/soc/internal.h)
@@ -100,10 +110,15 @@ all:
 	$(call PROCESS_HEADERS, $(notdir $(shell ls $(AUDIO_ROOT)/include/uapi/audio/linux/*.h)), $(AUDIO_ROOT)/include/uapi/audio/linux/, $(KERNEL_BINARY_DIR)/usr/include/audio/linux/)
 	$(call PROCESS_HEADERS, $(notdir $(shell ls $(AUDIO_ROOT)/include/uapi/audio/linux/mfd/wcd9xxx/*.h)), $(AUDIO_ROOT)/include/uapi/audio/linux/mfd/wcd9xxx/, $(KERNEL_BINARY_DIR)/usr/include/audio/linux/mfd/wcd9xxx/)
 	$(call PROCESS_HEADERS, $(notdir $(shell ls $(AUDIO_ROOT)/include/uapi/audio/sound/*.h)), $(AUDIO_ROOT)/include/uapi/audio/sound/, $(KERNEL_BINARY_DIR)/usr/include/audio/sound/)
+endif
 	$(MAKE) -C $(KERNEL_SRC) M=$(shell pwd) modules $(KBUILD_OPTIONS)
 
 modules_install:
 	$(MAKE) INSTALL_MOD_STRIP=1 -C $(KERNEL_SRC) M=$(shell pwd) modules_install
+ifeq ($(QTI_TECHPACK), true)
+%:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS)
+endif
 
 clean:
 	rm -f *.o *.ko *.mod.c *.mod.o *~ .*.cmd Module.symvers

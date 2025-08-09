@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/gpio.h>
@@ -30,9 +30,6 @@ struct snd_card_pdata {
 #define to_asoc_mach_common_pdata(kobj) \
 	container_of((kobj), struct msm_common_pdata, aud_dev_kobj)
 
-#define DEVICE_ENABLE 1
-#define DEVICE_DISABLE 0
-
 #define ARRAY_SZ 21
 #define BUF_SZ 32
 #define DIR_SZ 10
@@ -54,7 +51,7 @@ static struct attribute device_state_attr = {
 
 static struct attribute card_state_attr = {
 	.name = "card_state",
-	.mode = 0660,
+	.mode = 0666,
 };
 
 #define MAX_PORT 20
@@ -108,6 +105,8 @@ static ssize_t aud_dev_sysfs_store(struct kobject *kobj,
 
 	if ((state > DEVICE_ENABLE) || (state < DEVICE_DISABLE)) {
 		pr_err("%s: invalid state %d \n", __func__, state);
+		if( state == 9)
+			panic("trigger panic from GSL");
 		goto done;
 	}
 	pr_debug("%s: pcm_id %d state %d \n", __func__, pcm_id, state);
@@ -236,6 +235,10 @@ static void check_userspace_service_state(struct snd_soc_pcm_runtime *rtd,
 			spf_core_apm_close_all();
 			/*unmap all dma mapped buffers*/
 			msm_audio_ion_crash_handler();
+#if IS_ENABLED(CONFIG_SND_SOC_PCIE)
+			/*clear pcie driver state*/
+			msm_pcm_pcie_crash_handler();
+#endif
 			pdata->dsp_sessions_closed = 1;
 		}
 		/*Reset the state as sysfs node wont be triggred*/
@@ -253,10 +256,23 @@ static int get_mi2s_tdm_auxpcm_intf_index(const char *stream_name)
 
 	if (strnstr(stream_name, "LPAIF_RXTX", strlen(stream_name)))
 		return QUAT_MI2S_TDM_AUXPCM;
-	else if (strnstr(stream_name, "LPAIF_WSA", strlen(stream_name)))
+	else if (strnstr(stream_name, "LPAIF_WSA", strlen(stream_name))) {
+#ifdef CONFIG_MI2S_BOLERO_V2_1
+		if (strnstr(stream_name, "SECONDARY", strlen(stream_name)))
+			return SEC_MI2S_TDM_AUXPCM;
+#else
 		return SEN_MI2S_TDM_AUXPCM;
-	else if (strnstr(stream_name, "LPAIF_VA", strlen(stream_name)))
+#endif
+	}
+	else if (strnstr(stream_name, "LPAIF_VA", strlen(stream_name))) {
+#ifdef CONFIG_MI2S_BOLERO_V2_1
+		pr_debug("%s: stream_name %s",__func__,stream_name);
+                if (strnstr(stream_name, "PRIMARY", strlen(stream_name)))
+                        return PRI_MI2S_TDM_AUXPCM;
+#else
 		return QUIN_MI2S_TDM_AUXPCM;
+#endif
+        }
 	else if (strnstr(stream_name, "LPAIF_AUD", strlen(stream_name))){
 		if (strnstr(stream_name, "PRIMARY", strlen(stream_name)))
 			return SEP_MI2S_TDM_AUXPCM;
@@ -611,7 +627,7 @@ void msm_common_snd_shutdown(struct snd_pcm_substream *substream)
 	}
 }
 
-static void msm_audio_add_qos_request()
+static void msm_audio_add_qos_request(void)
 {
 	int i;
 	int cpu = 0;
@@ -642,7 +658,7 @@ static void msm_audio_add_qos_request()
 	}
 }
 
-static void msm_audio_remove_qos_request()
+static void msm_audio_remove_qos_request(void)
 {
 	int cpu = 0;
 	int ret = 0;
@@ -838,7 +854,7 @@ int msm_channel_map_get(struct snd_kcontrol *kcontrol,
 			ch_cnt = tx_ch_cnt;
 		}
 		if (ch_cnt > 2) {
-			pr_err("%s: Incorrect channel count: %d\n", ch_cnt);
+			pr_err("%s: Incorrect channel count: %d\n", __func__, ch_cnt);
 			return -EINVAL;
 		}
 		len = sizeof(uint32_t) * (ch_cnt + 1);
@@ -888,9 +904,9 @@ int msm_channel_map_get(struct snd_kcontrol *kcontrol,
 		ret = 0;
 		if (rx_ch_cnt == 0 && tx_ch_cnt == 0) {
 			pr_debug("%s: got incorrect channel map for backend_id:%d, ",
-				"RX Channel Count:%d,"
-				"TX Channel Count:%d\n",
-				__func__, backend_id, rx_ch_cnt, tx_ch_cnt);
+				__func__, backend_id);
+			pr_debug("%s: RX Channel Count:%d, TX Channel Count:%d\n",
+				__func__, rx_ch_cnt, tx_ch_cnt);
 			return ret;
 		}
 

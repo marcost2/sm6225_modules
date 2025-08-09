@@ -150,8 +150,17 @@ int lpi_pinctrl_runtime_suspend(struct device *dev);
 static int lpi_gpio_read(struct lpi_gpio_pad *pad, unsigned int addr)
 {
 	int ret = 0;
-	struct lpi_gpio_state *state = dev_get_drvdata(lpi_dev);
+	struct lpi_gpio_state *state = NULL;
 	static DEFINE_RATELIMIT_STATE(rtl, 1 * HZ, 1);
+
+	if (!lpi_dev) {
+		if (__ratelimit(&rtl))
+			pr_err_ratelimited("%s: lpi_dev is NULL, return\n",
+							__func__);
+		return -EINVAL;
+	}
+
+	state = dev_get_drvdata(lpi_dev);
 
 	if (!lpi_dev_up) {
 		if (__ratelimit(&rtl))
@@ -183,9 +192,18 @@ err:
 static int lpi_gpio_write(struct lpi_gpio_pad *pad, unsigned int addr,
 			  unsigned int val)
 {
-	struct lpi_gpio_state *state = dev_get_drvdata(lpi_dev);
+	struct lpi_gpio_state *state = NULL;
 	int ret = 0;
 	static DEFINE_RATELIMIT_STATE(rtl, 1 * HZ, 1);
+
+	if (!lpi_dev) {
+		if (__ratelimit(&rtl))
+			pr_err_ratelimited("%s: lpi_dev is NULL, return\n",
+							__func__);
+		return -EINVAL;
+	}
+
+	state = dev_get_drvdata(lpi_dev);
 
 	if (!lpi_dev_up) {
 		return 0;
@@ -415,12 +433,12 @@ set_gpio:
 	val |= pad->pullup << LPI_GPIO_REG_PULL_SHIFT;
 	val |= lpi_drive_to_regval(pad->strength) <<
 		LPI_GPIO_REG_OUT_STRENGTH_SHIFT;
-	if (pad->output_enabled)
-		val |= pad->value << LPI_GPIO_REG_OE_SHIFT;
+	val |= pad->output_enabled << LPI_GPIO_REG_OE_SHIFT;
 
 	lpi_gpio_write(pad, LPI_GPIO_REG_VAL_CTL, val);
-	lpi_gpio_write(pad, LPI_GPIO_REG_DIR_CTL,
-		       pad->output_enabled << LPI_GPIO_REG_DIR_SHIFT);
+	if (pad->output_enabled)
+		lpi_gpio_write(pad, LPI_GPIO_REG_DIR_CTL,
+			pad->value << LPI_GPIO_REG_DIR_SHIFT);
 done:
 	return ret;
 }
@@ -548,8 +566,15 @@ static void lpi_pinctrl_ssr_disable(struct device *dev, void *data)
 
 static int lpi_pinctrl_ssr_enable(struct device *dev, void *data)
 {
-	struct lpi_gpio_state *state = dev_get_drvdata(lpi_dev);
+	struct lpi_gpio_state *state = NULL;
 	dev_dbg(dev, "%s: enter\n", __func__);
+
+	if (!lpi_dev) {
+		dev_err(dev, "%s: lpi_dev is NULL, return\n", __func__);
+		return -EINVAL;
+	}
+
+	state = dev_get_drvdata(lpi_dev);
 
 	if (!initial_boot) {
 		trace_printk("%s: enter\n", __func__);

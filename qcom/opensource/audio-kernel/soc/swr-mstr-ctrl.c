@@ -2618,6 +2618,9 @@ static int swrm_master_init(struct swr_mstr_ctrl *swrm)
 #ifdef CONFIG_SWRM_VER_2P0
 	reg[len] = SWRM_CLK_CTRL(swrm->ee_val);
 	value[len++] = 0x01;
+#else
+	reg[len] = SWRM_MCP_BUS_CTRL;
+	value[len++] = 0x02;
 #endif
 
 	/* Set IRQ to PULSE */
@@ -3140,6 +3143,7 @@ err_irq_fail:
 	cpu_latency_qos_remove_request(&swrm->pm_qos_req);
 
 err_pdata_fail:
+	platform_set_drvdata(pdev, NULL);
 err_memory_fail:
 	return ret;
 }
@@ -3399,6 +3403,8 @@ static int swrm_runtime_suspend(struct device *dev)
 			current_state == SWR_MSTR_UP) {
 			dev_err_ratelimited(dev, "%s: clk stop mode not supported or SSR entry\n",
 				__func__);
+			if (swrm->state == SWR_MSTR_SSR)
+				goto chk_lnk_status;
 			mutex_unlock(&swrm->reslock);
 			enable_bank_switch(swrm, 0, SWR_ROW_50, SWR_MIN_COL);
 			mutex_lock(&swrm->reslock);
@@ -3438,6 +3444,7 @@ static int swrm_runtime_suspend(struct device *dev)
 			mutex_lock(&swrm->reslock);
 			usleep_range(100, 105);
 		}
+chk_lnk_status:
 		if (!swrm_check_link_status(swrm, 0x0))
 			dev_dbg(dev, "%s:failed in disconnecting, ssr?\n",
 				__func__);
@@ -3693,13 +3700,15 @@ int swrm_wcd_notify(struct platform_device *pdev, u32 id, void *data)
 	case SWR_DEVICE_SSR_DOWN:
 		trace_printk("%s: swr device down called\n", __func__);
 		mutex_lock(&swrm->mlock);
+		mutex_lock(&swrm->devlock);
+		swrm->dev_up = false;
+		mutex_unlock(&swrm->devlock);
 		if (swrm->state == SWR_MSTR_DOWN)
 			dev_dbg(swrm->dev, "%s:SWR master is already Down:%d\n",
 				__func__, swrm->state);
 		else
 			swrm_device_down(&pdev->dev);
 		mutex_lock(&swrm->devlock);
-		swrm->dev_up = false;
 		if (swrm->hw_core_clk_en)
 			digital_cdc_rsc_mgr_hw_vote_disable(
 				swrm->lpass_core_hw_vote, swrm->dev);
