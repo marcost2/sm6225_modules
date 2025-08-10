@@ -198,7 +198,7 @@ static void dp_ctrl_wait4video_ready(struct dp_ctrl_private *ctrl)
 	if (!wait_for_completion_timeout(&ctrl->video_comp, HZ / 2))
 		DP_WARN("SEND_VIDEO time out\n");
 	else
-		DP_DEBUG("SEND_VIDEO triggered\n");
+		DP_INFO("SEND_VIDEO triggered\n");
 }
 
 static int dp_ctrl_update_sink_vx_px(struct dp_ctrl_private *ctrl)
@@ -279,7 +279,7 @@ static int dp_ctrl_read_link_status(struct dp_ctrl_private *ctrl,
 			break;
 		}
 
-		if (!(link_status[offset] & DP_LINK_STATUS_UPDATED))
+		if (link_status[offset] & DP_LINK_STATUS_UPDATED)
 			break;
 	}
 
@@ -750,8 +750,15 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 	catalog->phy_lane_cfg(catalog, ctrl->orientation,
 				link_params->lane_count);
 
+	// When there is multiFunc, only 2 lanes can be used by DP, some usb hub can not send video properly.
+	// Just reduce DP capablity to avoid choosing mode with too high resolution and framerate
+	if (ctrl->parser->dp_downgrade && link_params->lane_count == 2 && link_params->bw_code == DP_LINK_BW_8_1) {
+		DP_INFO("dp_ctrl_link_setup downgrade to DP1.2\n");
+		link_params->bw_code = DP_LINK_BW_5_4;
+	}
+
 	while (1) {
-		DP_DEBUG("bw_code=%d, lane_count=%d\n",
+		DP_INFO("bw_code=%d, lane_count=%d\n",
 			link_params->bw_code, link_params->lane_count);
 
 		rc = dp_ctrl_enable_link_clock(ctrl);
@@ -1001,6 +1008,7 @@ static int dp_ctrl_link_maintenance(struct dp_ctrl *dp_ctrl)
 	if (atomic_read(&ctrl->aborted))
 		goto end;
 
+	DP_INFO("stream_count=%d\n", ctrl->stream_count);
 	ctrl->aux->state |= DP_STATE_LINK_MAINTENANCE_STARTED;
 	ret = dp_ctrl_setup_main_link(ctrl);
 	ctrl->aux->state &= ~DP_STATE_LINK_MAINTENANCE_STARTED;
@@ -1303,7 +1311,7 @@ static int dp_ctrl_stream_on(struct dp_ctrl *dp_ctrl, struct dp_panel *panel)
 	ctrl->stream_count++;
 
 	link_ready = ctrl->catalog->mainlink_ready(ctrl->catalog);
-	DP_DEBUG("mainlink %s\n", link_ready ? "READY" : "NOT READY");
+	DP_INFO("mainlink %s\n", link_ready ? "READY" : "NOT READY");
 
 	/* wait for link training completion before fec config as per spec */
 	dp_ctrl_fec_setup(ctrl);
@@ -1415,7 +1423,7 @@ static int dp_ctrl_on(struct dp_ctrl *dp_ctrl, bool mst_mode,
 			ctrl->panel->link_info.num_lanes;
 	}
 
-	DP_DEBUG("bw_code=%d, lane_count=%d\n",
+	DP_INFO("bw_code=%d, lane_count=%d\n",
 		ctrl->link->link_params.bw_code,
 		ctrl->link->link_params.lane_count);
 

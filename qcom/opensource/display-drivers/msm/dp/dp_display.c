@@ -16,6 +16,7 @@
 #include <linux/jiffies.h>
 #include <linux/pm_qos.h>
 #include <linux/ipc_logging.h>
+#include <linux/of_gpio.h>
 
 #include "sde_connector.h"
 
@@ -49,7 +50,7 @@
 	SDE_EVT32_EXTERNAL(dp->state); }
 
 #define dp_display_state_log(x) { \
-	DP_DEBUG("%s: state (0x%x): %s\n", x, dp->state, \
+	DP_INFO("%s: state (0x%x): %s\n", x, dp->state, \
 		dp_display_state_name(dp->state)); \
 	SDE_EVT32_EXTERNAL(dp->state); }
 
@@ -383,8 +384,8 @@ static void dp_display_update_hdcp_info(struct dp_display_private *dp)
 		}
 	}
 
-	DP_DEBUG("HDCP version supported: %s\n",
-		sde_hdcp_version(dp->link->hdcp_status.hdcp_version));
+	DP_INFO("HDCP version supported: %s, HDCP state: %s\n",
+		sde_hdcp_version(dp->link->hdcp_status.hdcp_version), sde_hdcp_state_name(dp->link->hdcp_status.hdcp_state));
 }
 
 static void dp_display_check_source_hdcp_caps(struct dp_display_private *dp)
@@ -397,6 +398,7 @@ static void dp_display_check_source_hdcp_caps(struct dp_display_private *dp)
 		return;
 	}
 
+	DP_INFO("##\n");
 	for (i = 0; i < HDCP_VERSION_MAX; i++) {
 		struct dp_hdcp_dev *dev = &hdcp_dev[i];
 		struct sde_hdcp_ops *ops = dev->ops;
@@ -415,6 +417,7 @@ static void dp_display_check_source_hdcp_caps(struct dp_display_private *dp)
 	}
 
 	dp_display_update_hdcp_status(dp, false);
+	DP_INFO("==\n");
 }
 
 static void dp_display_hdcp_register_streams(struct dp_display_private *dp)
@@ -607,6 +610,7 @@ static void dp_display_hdcp_cb_work(struct work_struct *work)
 	struct dp_link_hdcp_status *status;
 	int rc = 0;
 
+	DP_INFO("##\n");
 	dp = container_of(dw, struct dp_display_private, hdcp_cb_work);
 
 	if (!dp_display_state_is(DP_STATE_ENABLED | DP_STATE_CONNECTED) ||
@@ -614,7 +618,7 @@ static void dp_display_hdcp_cb_work(struct work_struct *work)
 		return;
 
 	if (dp_display_state_is(DP_STATE_SUSPENDED)) {
-		DP_DEBUG("System suspending. Delay HDCP operations\n");
+		DP_INFO("System suspending. Delay HDCP operations\n");
 		queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ);
 		return;
 	}
@@ -632,12 +636,13 @@ static void dp_display_hdcp_cb_work(struct work_struct *work)
 	dp_display_hdcp_print_auth_state(dp);
 
 	status = &dp->link->hdcp_status;
-	DP_DEBUG("%s: %s\n", sde_hdcp_version(status->hdcp_version),
+	DP_INFO("%s: %s\n", sde_hdcp_version(status->hdcp_version),
 		sde_hdcp_state_name(status->hdcp_state));
 
 	dp_display_update_hdcp_status(dp, false);
 
 	dp_display_hdcp_process_state(dp);
+	DP_INFO("==\n");
 }
 
 static void dp_display_notify_hdcp_status_cb(void *ptr,
@@ -650,6 +655,7 @@ static void dp_display_notify_hdcp_status_cb(void *ptr,
 		return;
 	}
 
+	DP_INFO("\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY,
 					dp->link->hdcp_status.hdcp_state);
 
@@ -939,10 +945,10 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp)
 	 * notifications.
 	 */
 	if (dp_display_state_is(DP_STATE_CONNECT_NOTIFIED) && hpd) {
-		DP_DEBUG("connection notified already, skip notification\n");
+		DP_INFO("connection notified already, skip notification\n");
 		goto skip_wait;
 	} else if (dp_display_state_is(DP_STATE_DISCONNECT_NOTIFIED) && !hpd) {
-		DP_DEBUG("disonnect notified already, skip notification\n");
+		DP_INFO("disonnect notified already, skip notification\n");
 		goto skip_wait;
 	}
 
@@ -1212,11 +1218,12 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	unsigned long wait_timeout_ms;
 	unsigned long t;
 
+	DP_INFO("##\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
 
 	if (dp_display_state_is(DP_STATE_CONNECTED)) {
-		DP_DEBUG("dp already connected, skipping hpd high\n");
+		DP_INFO("dp already connected, skipping hpd high\n");
 		mutex_unlock(&dp->session_lock);
 		return -EISCONN;
 	}
@@ -1313,7 +1320,7 @@ end:
 			(unsigned long) MAX_CONNECT_NOTIFICATION_DELAY_MS);
 	t = wait_for_completion_timeout(&dp->attention_comp,
 		msecs_to_jiffies(wait_timeout_ms));
-	DP_DEBUG("wait_timeout=%lu ms, time_waited=%u ms\n", wait_timeout_ms,
+	DP_INFO("wait_timeout=%lu ms, time_waited=%u ms\n", wait_timeout_ms,
 		jiffies_to_msecs(t));
 
 	/*
@@ -1332,7 +1339,7 @@ end:
 	if (!dp->mst.mst_active &&
 		(work_busy(&dp->attention_work) == WORK_BUSY_PENDING)) {
 		SDE_EVT32_EXTERNAL(dp->state, 99, jiffies_to_msecs(t));
-		DP_DEBUG("Attention pending, skip HPD notification\n");
+		DP_INFO("Attention pending, skip HPD notification\n");
 		goto skip_notify;
 	}
 
@@ -1342,6 +1349,7 @@ end:
 skip_notify:
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state,
 		wait_timeout_ms, rc);
+	DP_INFO("==\n");
 	return rc;
 }
 
@@ -1375,6 +1383,7 @@ static int dp_display_process_hpd_low(struct dp_display_private *dp)
 {
 	int rc = 0;
 
+	DP_INFO("##, mst_active=%d\n", dp->mst.mst_active);
 	dp_display_state_remove(DP_STATE_CONNECTED);
 	dp->process_hpd_connect = false;
 	dp_audio_enable(dp, false);
@@ -1394,6 +1403,7 @@ static int dp_display_process_hpd_low(struct dp_display_private *dp)
 
 	dp->panel->video_test = false;
 
+	DP_INFO("==\n");
 	return rc;
 }
 
@@ -1415,32 +1425,39 @@ static int dp_display_init_aux_switch(struct dp_display_private *dp)
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 
-	nb.notifier_call = dp_display_fsa4480_callback;
-	nb.priority = 0;
-
 	/*
-	 * Iteratively wait for reg notifier which confirms that fsa driver is probed.
-	 * Bootup DP with cable connected usecase can hit this scenario.
-	 */
-	for (retry = 0; retry < max_retries; retry++) {
-		rc = fsa4480_reg_notifier(&nb, dp->aux_switch_node);
-		if (rc == 0) {
-			DP_DEBUG("registered notifier successfully\n");
-			dp->aux_switch_ready = true;
-			break;
-		} else {
-			DP_DEBUG("failed to register notifier retry=%d rc=%d\n", retry, rc);
-			msleep(100);
+	 * If we do not define AUX switch control gpio, then we will regard using
+	 * FSA4480 or the same chips.
+	*/
+	if (!gpio_is_valid(dp->aux->dp_aux_switch_flip_gpio) &&
+		!gpio_is_valid(dp->aux->dp_aux_switch_enable_gpio)) {
+		nb.notifier_call = dp_display_fsa4480_callback;
+		nb.priority = 0;
+
+		/*
+		 * Iteratively wait for reg notifier which confirms that fsa driver is probed.
+		 * Bootup DP with cable connected usecase can hit this scenario.
+		 */
+		for (retry = 0; retry < max_retries; retry++) {
+			rc = fsa4480_reg_notifier(&nb, dp->aux_switch_node);
+			if (rc == 0) {
+				DP_DEBUG("registered notifier successfully\n");
+				dp->aux_switch_ready = true;
+				break;
+			} else {
+				DP_DEBUG("failed to register notifier retry=%d rc=%d\n", retry, rc);
+				msleep(100);
+			}
 		}
-	}
 
-	if (retry == max_retries) {
-		DP_WARN("Failed to register fsa notifier\n");
-		dp->aux_switch_ready = false;
-		return rc;
-	}
+		if (retry == max_retries) {
+			DP_WARN("Failed to register fsa notifier\n");
+			dp->aux_switch_ready = false;
+			return rc;
+		}
 
-	fsa4480_unreg_notifier(&nb, dp->aux_switch_node);
+		fsa4480_unreg_notifier(&nb, dp->aux_switch_node);
+	}
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, rc);
 	return rc;
@@ -1461,6 +1478,7 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 		DP_ERR("no driver data found\n");
 		return -ENODEV;
 	}
+	DP_INFO("%s\n", __func__);
 
 	if (!dp->debug->sim_mode && !dp->no_aux_switch
 	    && !dp->parser->gpio_aux_switch && dp->aux_switch_node) {
@@ -1539,7 +1557,7 @@ static void dp_display_stream_disable(struct dp_display_private *dp,
 
 	dp_display_clear_dsc_resources(dp, dp_panel);
 
-	DP_DEBUG("stream_id=%d, active_stream_cnt=%d, tot_dsc_blks_in_use=%d\n",
+	DP_INFO("stream_id=%d, active_stream_cnt=%d, tot_dsc_blks_in_use=%d\n",
 			dp_panel->stream_id, dp->active_stream_cnt,
 			dp->tot_dsc_blks_in_use);
 
@@ -1711,7 +1729,7 @@ static int dp_display_stream_enable(struct dp_display_private *dp,
 	}
 
 
-	DP_DEBUG("dp active_stream_cnt:%d, tot_dsc_blks_in_use=%d\n",
+	DP_INFO("dp active_stream_cnt:%d, tot_dsc_blks_in_use=%d\n",
 			dp->active_stream_cnt, dp->tot_dsc_blks_in_use);
 
 	return rc;
@@ -1730,6 +1748,7 @@ static void dp_display_attention_work(struct work_struct *work)
 	struct dp_display_private *dp = container_of(work,
 			struct dp_display_private, attention_work);
 	int rc = 0;
+	DP_INFO("##\n");
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -1837,6 +1856,7 @@ cp_irq:
 mst_attention:
 	dp_display_mst_attention(dp);
 exit:
+	DP_INFO("==\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 }
 
@@ -1855,7 +1875,7 @@ static int dp_display_usbpd_attention_cb(struct device *dev)
 		return -ENODEV;
 	}
 
-	DP_DEBUG("hpd_irq:%d, hpd_high:%d, power_on:%d, is_connected:%d\n",
+	DP_INFO("hpd_irq:%d, hpd_high:%d, power_on:%d, is_connected:%d\n",
 			dp->hpd->hpd_irq, dp->hpd->hpd_high,
 			!!dp_display_state_is(DP_STATE_ENABLED),
 			!!dp_display_state_is(DP_STATE_CONNECTED));
@@ -1902,6 +1922,7 @@ static void dp_display_connect_work(struct work_struct *work)
 	struct dp_display_private *dp = container_of(work,
 			struct dp_display_private, connect_work);
 
+	DP_INFO("##\n");
 	if (dp_display_state_is(DP_STATE_TUI_ACTIVE)) {
 		dp_display_state_log("[TUI is active]");
 		return;
@@ -1917,10 +1938,16 @@ static void dp_display_connect_work(struct work_struct *work)
 		return;
 	}
 
+	if (dp_display_state_is(DP_STATE_DISCONNECT_NOTIFIED) && dp->hpd->hpd_high) {
+		if (!dp->debug->sim_mode && !dp->no_aux_switch && !dp->parser->gpio_aux_switch)
+			dp->aux->aux_switch(dp->aux, true, dp->hpd->orientation);
+	}
+
 	rc = dp_display_process_hpd_high(dp);
 
 	if (!rc && dp->panel->video_test)
 		dp->link->send_test_response(dp->link);
+	DP_INFO("==\n");
 }
 
 static int dp_display_usb_notifier(struct notifier_block *nb,
@@ -2063,7 +2090,38 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		goto error_aux;
 	}
 
+	dp->aux->dp_aux_switch_enable_gpio = of_get_named_gpio(dp->pdev->dev.of_node,
+			"mmi,aux-switch-enable-gpio", 0);
+	if (gpio_is_valid(dp->aux->dp_aux_switch_enable_gpio)) {
+		rc = devm_gpio_request(dev, dp->aux->dp_aux_switch_enable_gpio,
+				"aux-switch-enable-gpio");
+		if (rc < 0) {
+			DP_ERR("Failed to request switch_enable_gpio: %d\n",
+					dp->aux->dp_aux_switch_enable_gpio);
+			dp->aux->dp_aux_switch_enable_gpio = -EINVAL;
+		}
+	}
+	dp->aux->dp_aux_switch_flip_gpio = of_get_named_gpio(dp->pdev->dev.of_node,
+			"mmi,aux-switch-flip-gpio", 0);
+	if (gpio_is_valid(dp->aux->dp_aux_switch_flip_gpio)) {
+		rc = devm_gpio_request(dev, dp->aux->dp_aux_switch_flip_gpio,
+				"aux-switch-flip-gpio");
+		if (rc < 0) {
+			DP_ERR("Failed to request switch_flip_gpio: %d\n",
+					dp->aux->dp_aux_switch_flip_gpio);
+			dp->aux->dp_aux_switch_flip_gpio = -EINVAL;
+		}
+	}
+	if (gpio_is_valid(dp->aux->dp_aux_switch_flip_gpio)) {
+		gpio_direction_output(dp->aux->dp_aux_switch_flip_gpio, 0);
+	}
+
+	if (gpio_is_valid(dp->aux->dp_aux_switch_enable_gpio)) {
+		gpio_direction_output(dp->aux->dp_aux_switch_enable_gpio, 1);
+	}
+
 	rc = dp->aux->drm_aux_register(dp->aux, dp->dp_display.drm_dev);
+
 	if (rc) {
 		DP_ERR("DRM DP AUX register failed\n");
 		goto error_pll;
@@ -2312,6 +2370,10 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 		return -EINVAL;
 	}
 
+	DP_INFO("## dp_panel[%dx%d:%d:%d] dp_mode[%dx%d:%d]\n",
+		dp_panel->hdisplay, dp_panel->vdisplay, dp_panel->vrefresh, dp_panel->aspect_ratio,
+		mode->timing.h_active, mode->timing.v_active, mode->timing.refresh_rate);
+
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state,
 			mode->timing.h_active, mode->timing.v_active,
@@ -2501,6 +2563,7 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 
+	DP_INFO("##\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
 
@@ -2532,6 +2595,7 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 end:
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, rc);
+	DP_INFO("==\n");
 	return rc;
 }
 
@@ -2596,6 +2660,7 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 		dp_panel->audio->lane_count = dp->link->link_params.lane_count;
 		dp_panel->audio->on(dp_panel->audio);
 	}
+	DP_INFO("display post enable complete. state: 0x%x\n", dp->state);
 end:
 	dp->aux->state |= DP_STATE_CTRL_POWERED_ON;
 
@@ -2684,6 +2749,7 @@ clean:
 end:
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
+	DP_INFO("==\n");
 	return 0;
 }
 
@@ -2716,6 +2782,7 @@ static int dp_display_disable(struct dp_display *dp_display, void *panel)
 		goto end;
 	}
 
+	DP_INFO("##\n");
 	dp_display_stream_disable(dp, dp_panel);
 
 	dp_display_state_remove(DP_STATE_HDCP_ABORTED);
@@ -2933,7 +3000,7 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 		return -EPERM;
 	}
 
-	DP_DEBUG_V("mode %sx%d is valid, supported DP topology lm:%d dsc:%d 3dmux:%d\n",
+	DP_INFO("mode %sx%d is valid, supported DP topology lm:%d dsc:%d 3dmux:%d\n",
 				mode->name, fps, num_lm, num_dsc, num_3dmux);
 
 	return 0;
@@ -2993,8 +3060,7 @@ static enum drm_mode_status dp_display_validate_mode(
 	mode_status = MODE_OK;
 end:
 	mutex_unlock(&dp->session_lock);
-
-	DP_DEBUG_V("[%s] mode is %s\n", mode->name,
+	DP_INFO("[%s] mode is %s\n", mode->name,
 			(mode_status == MODE_OK) ? "valid" : "invalid");
 
 	return mode_status;
