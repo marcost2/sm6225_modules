@@ -1,8 +1,8 @@
 # add -Wall to try to catch everything we can.
 EXTRA_CFLAGS += -Wall
-EXTRA_CFLAGS += -I$(ANDROID_BUILD_TOP)/motorola/kernel/modules/include \
-		-I$(ANDROID_BUILD_TOP)/motorola/kernel/modules/drivers/input/touchscreen/focaltech_0flash_v2_mmi \
-		-I$(ANDROID_BUILD_TOP)/motorola/kernel/modules/drivers/input/touchscreen/focaltech_0flash_v2_mmi/include
+EXTRA_CFLAGS += -I$(KERNEL_SRC)/../sm6225-modules/motorola//modules/include \
+		-I$(KERNEL_SRC)/../sm6225-modules/motorola//modules/drivers/input/touchscreen/focaltech_0flash_v2_mmi \
+		-I$(KERNEL_SRC)/../sm6225-modules/motorola//modules/drivers/input/touchscreen/focaltech_0flash_v2_mmi/include
 
 obj-m := focaltech_0flash_v2_mmi.o
 focaltech_0flash_v2_mmi-objs += focaltech_core.o
@@ -68,4 +68,4 @@ ifneq ($(filter m y,$(CONFIG_FTS_MULTI_FW)),)
 	EXTRA_CFLAGS += -DCONFIG_FTS_MULTI_FW
 endif
 
-KBUILD_EXTRA_SYMBOLS += $(CURDIR)/../../kernel/msm-$(MODULE_KERNEL_VERSION)/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT_DIR)$(KERNEL_SRC)/../sm6225-modules/motorola/Module.symvers

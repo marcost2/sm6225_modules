@@ -1,8 +1,8 @@
 # add -Wall to try to catch everything we can.
 EXTRA_CFLAGS += -Wall
-EXTRA_CFLAGS += -I$(ANDROID_BUILD_TOP)/motorola/kernel/modules/include \
-		-I$(ANDROID_BUILD_TOP)/motorola/kernel/modules/drivers/input/touchscreen/ili9882_mmi \
-		-I$(ANDROID_BUILD_TOP)/motorola/kernel/modules/drivers/input/touchscreen/ili9882_mmi/firmware
+EXTRA_CFLAGS += -I$(KERNEL_SRC)/../sm6225-modules/motorola//modules/include \
+		-I$(KERNEL_SRC)/../sm6225-modules/motorola//modules/drivers/input/touchscreen/ili9882_mmi \
+		-I$(KERNEL_SRC)/../sm6225-modules/motorola//modules/drivers/input/touchscreen/ili9882_mmi/firmware
 
 ifeq ($(filter m y, $(CONFIG_TOUCHSCREEN_ILITEK_CHIPSET)),)
 	obj-m += ili9882_mmi.o
@@ -77,7 +77,7 @@ ifneq ($(filter m y,$(CONFIG_INPUT_TOUCHSCREEN_MMI)),)
     EXTRA_CFLAGS += -DCONFIG_INPUT_TOUCHSCREEN_MMI
     ili9882_mmi-objs += ili_mmi_class.o
 endif
-KBUILD_EXTRA_SYMBOLS += $(CURDIR)/../../kernel/msm-$(MODULE_KERNEL_VERSION)/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT_DIR)$(KERNEL_SRC)/../sm6225-modules/motorola/Module.symvers
 
 ifneq ($(filter m y,$(CONFIG_GTP_DDA_STYLUS)),)
     EXTRA_CFLAGS += -DCONFIG_MOTO_DDA_PASSIVESTYLUS
