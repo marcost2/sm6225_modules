@@ -1,7 +1,7 @@
 # add -Wall to try to catch everything we can.
 EXTRA_CFLAGS += -Wall
 EXTRA_CFLAGS += -I$(TOP)/motorola/kernel/modules/include
-KBUILD_EXTRA_SYMBOLS += $(OUT_DIR)$(KERNEL_SRC)/../sm6225-modules/motorola/Module.symvers
+KBUILD_EXTRA_SYMBOLS += $(OUT_DIR)$(KERNEL_SRC)/../sm6225_modules/motorola/Module.symvers
 
 obj-m += qpnp-power-on-mmi.o
 

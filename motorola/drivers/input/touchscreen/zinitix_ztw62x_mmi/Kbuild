@@ -1,6 +1,6 @@
 # add -Wall to try to catch everything we can.
 EXTRA_CFLAGS += -Wall
-EXTRA_CFLAGS += -I$(KERNEL_SRC)/../sm6225-modules/motorola//modules/include
+EXTRA_CFLAGS += -I$(KERNEL_SRC)/../sm6225_modules/motorola//modules/include
 
 obj-m := zinitix_ztw62x_mmi.o
 

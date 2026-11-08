@@ -2,7 +2,7 @@
 
 KBUILD_OPTIONS += DISPLAY_ROOT=$(KERNEL_SRC)/$(M)/../
 KBUILD_OPTIONS += BOARD_PLATFORM=bengal
-KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS=$(OUT_DIR)/../sm6225-modules/qcom/opensource/mmrm-driver/Module.symvers
+KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS=$(OUT_DIR)/../sm6225_modules/qcom/opensource/mmrm-driver/Module.symvers
 
 all: modules
 
